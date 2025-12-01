@@ -8,7 +8,7 @@ import joblib
 st.set_page_config(page_title="Heart Disease Prediction", layout="centered")
 
 st.title("❤️ Heart Disease Prediction App")
-st.write("Enter patient information below to estimate the likelihood of heart disease.")
+st.write("Enter patient information to estimate the likelihood of heart disease.")
 
 # Load model files
 preprocessor = joblib.load("preprocessor.pkl")
@@ -25,11 +25,11 @@ chol = st.slider("Cholesterol (chol)", 100, 600, 250)
 thalch = st.slider("Maximum Heart Rate (thalch)", 70, 220, 150)
 oldpeak = st.slider("ST Depression (oldpeak)", 0.0, 6.0, 1.0, step=0.1)
 
-# Convert sex to numeric
+# Sex (numeric)
 sex_label = st.selectbox("Sex", ["Male", "Female"])
 sex = 1 if sex_label == "Male" else 0
 
-# Chest Pain (cp)
+# Chest Pain (cp) mapping
 cp_label = st.selectbox("Chest Pain Type (cp)", [
     "typical angina",
     "atypical angina",
@@ -45,7 +45,7 @@ cp_map = {
 cp = cp_map[cp_label]
 
 # Resting ECG (restecg)
-restecg_label = st.selectbox("Resting ECG", [
+restecg_label = st.selectbox("Resting ECG (restecg)", [
     "normal",
     "st-t abnormality",
     "lv hypertrophy"
@@ -57,7 +57,7 @@ restecg_map = {
 }
 restecg = restecg_map[restecg_label]
 
-# Slope
+# Slope (0–2)
 slope_label = st.selectbox("Slope", ["upsloping", "flat", "downsloping"])
 slope_map = {
     "upsloping": 0,
@@ -66,7 +66,7 @@ slope_map = {
 }
 slope = slope_map[slope_label]
 
-# Thal
+# Thal (0–2)
 thal_label = st.selectbox("Thal", ["normal", "fixed defect", "reversable defect"])
 thal_map = {
     "normal": 0,
@@ -75,40 +75,39 @@ thal_map = {
 }
 thal = thal_map[thal_label]
 
-# Numeric
+# Numeric values
 ca = st.selectbox("Number of Major Vessels (ca)", [0, 1, 2, 3])
 fbs = st.selectbox("Fasting Blood Sugar > 120 mg/dl (fbs)", [0, 1])
 exang = st.selectbox("Exercise-induced Angina (exang)", [0, 1])
 
 # -----------------------------
-# Prediction Button
+# PREDICTION BUTTON
 # -----------------------------
 if st.button("Predict Heart Disease Risk"):
-    
-    # Prepare input data — **correct order**
+
+    # **IMPORTANT**
+    # EXACT TRAINING ORDER (based on your notebook)
     input_data = pd.DataFrame([{
         "age": age,
-        "trestbps": trestbps,
-        "chol": chol,
-        "thalch": thalch,
-        "oldpeak": oldpeak,
         "sex": sex,
         "cp": cp,
-        "restecg": restecg,
-        "slope": slope,
-        "thal": thal,
-        "ca": ca,
+        "trestbps": trestbps,
+        "chol": chol,
         "fbs": fbs,
-        "exang": exang
+        "restecg": restecg,
+        "thalch": thalch,
+        "exang": exang,
+        "oldpeak": oldpeak,
+        "slope": slope,
+        "ca": ca,
+        "thal": thal
     }])
 
-    # Preprocess and predict
     transformed = preprocessor.transform(input_data)
     probability = model.predict_proba(transformed)[0][1]
     prediction = model.predict(transformed)[0]
 
     st.subheader("🩺 Prediction Result")
-
     st.write(f"**Estimated Probability of Heart Disease: {probability*100:.2f}%**")
 
     if prediction == 1:
