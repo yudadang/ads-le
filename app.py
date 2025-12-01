@@ -3,7 +3,7 @@ import pandas as pd
 import joblib
 
 # -----------------------------
-# Load saved model + preprocessor
+# Streamlit Config
 # -----------------------------
 st.set_page_config(page_title="Heart Disease Prediction", layout="centered")
 
@@ -25,20 +25,57 @@ chol = st.slider("Cholesterol (chol)", 100, 600, 250)
 thalch = st.slider("Maximum Heart Rate (thalch)", 70, 220, 150)
 oldpeak = st.slider("ST Depression (oldpeak)", 0.0, 6.0, 1.0, step=0.1)
 
-sex = st.selectbox("Sex", ["Male", "Female"])
-cp = st.selectbox("Chest Pain Type (cp)", [
+# Convert sex to numeric
+sex_label = st.selectbox("Sex", ["Male", "Female"])
+sex = 1 if sex_label == "Male" else 0
+
+# Chest Pain (cp)
+cp_label = st.selectbox("Chest Pain Type (cp)", [
     "typical angina",
     "atypical angina",
     "non-anginal",
     "asymptomatic"
 ])
-restecg = st.selectbox("Resting ECG", [
+cp_map = {
+    "typical angina": 0,
+    "atypical angina": 1,
+    "non-anginal": 2,
+    "asymptomatic": 3
+}
+cp = cp_map[cp_label]
+
+# Resting ECG (restecg)
+restecg_label = st.selectbox("Resting ECG", [
     "normal",
-    "lv hypertrophy",
-    "st-t abnormality"
+    "st-t abnormality",
+    "lv hypertrophy"
 ])
-slope = st.selectbox("Slope", ["upsloping", "flat", "downsloping"])
-thal = st.selectbox("Thal", ["normal", "fixed defect", "reversable defect"])
+restecg_map = {
+    "normal": 0,
+    "st-t abnormality": 1,
+    "lv hypertrophy": 2
+}
+restecg = restecg_map[restecg_label]
+
+# Slope
+slope_label = st.selectbox("Slope", ["upsloping", "flat", "downsloping"])
+slope_map = {
+    "upsloping": 0,
+    "flat": 1,
+    "downsloping": 2
+}
+slope = slope_map[slope_label]
+
+# Thal
+thal_label = st.selectbox("Thal", ["normal", "fixed defect", "reversable defect"])
+thal_map = {
+    "normal": 0,
+    "fixed defect": 1,
+    "reversable defect": 2
+}
+thal = thal_map[thal_label]
+
+# Numeric
 ca = st.selectbox("Number of Major Vessels (ca)", [0, 1, 2, 3])
 fbs = st.selectbox("Fasting Blood Sugar > 120 mg/dl (fbs)", [0, 1])
 exang = st.selectbox("Exercise-induced Angina (exang)", [0, 1])
@@ -48,7 +85,7 @@ exang = st.selectbox("Exercise-induced Angina (exang)", [0, 1])
 # -----------------------------
 if st.button("Predict Heart Disease Risk"):
     
-    # Prepare input data
+    # Prepare input data — **correct order**
     input_data = pd.DataFrame([{
         "age": age,
         "trestbps": trestbps,
@@ -66,19 +103,18 @@ if st.button("Predict Heart Disease Risk"):
     }])
 
     # Preprocess and predict
-    transformed_data = preprocessor.transform(input_data)
-    probability = model.predict_proba(transformed_data)[0][1]
-    prediction = model.predict(transformed_data)[0]
+    transformed = preprocessor.transform(input_data)
+    probability = model.predict_proba(transformed)[0][1]
+    prediction = model.predict(transformed)[0]
 
     st.subheader("🩺 Prediction Result")
 
     st.write(f"**Estimated Probability of Heart Disease: {probability*100:.2f}%**")
 
     if prediction == 1:
-        st.error("⚠️ High Risk — The patient is likely to have heart disease. Clinical evaluation recommended.")
+        st.error("⚠️ High Risk — The patient is likely to have heart disease.")
     else:
         st.success("✅ Low Risk — The patient is unlikely to have heart disease.")
-
 
 # -----------------------------
 # Footer
