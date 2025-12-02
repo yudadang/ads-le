@@ -236,7 +236,7 @@ elif page == "🩺 Prediction":
     fbs = st.selectbox("Fasting Blood Sugar > 120", [0, 1])
     exang = st.selectbox("Exercise-induced Angina", [0, 1])
 
-    if st.button("Predict"):
+    if st.button("Predict Risk"):
 
         input_data = pd.DataFrame([{
             "age": age,
@@ -266,36 +266,11 @@ elif page == "🩺 Prediction":
         else:
             st.success("✅ Low risk of heart disease detected.")
 
-    # -----------------------------------
-    # Predict Button
-    # -----------------------------------
-    if st.button("Predict Risk"):
-
-        input_data = pd.DataFrame([{
-            "age": age, "trestbps": trestbps, "chol": chol,
-            "thalch": thalch, "oldpeak": oldpeak,
-            "sex": sex, "cp": cp, "fbs": fbs, "restecg": restecg,
-            "exang": exang, "slope": slope, "ca": ca, "thal": thal
-        }])
-
-        transformed = preprocessor.transform(input_data)
-        probability = model.predict_proba(transformed)[0][1]
-        prediction = model.predict(transformed)[0]
-
-        st.subheader("🔬 Prediction Result")
-        st.write(f"**Estimated Heart Disease Risk: {probability*100:.2f}%**")
-
-        # Progress bar risk meter
-        st.progress(int(probability * 100))
-
-        if prediction == 1:
-            st.error("⚠️ HIGH RISK — Possible heart disease detected.")
-        else:
-            st.success("✅ LOW RISK — Heart condition appears normal.")
 
 
 # =======================================
 st.write("---")
 st.caption("Machine Learning Dashboard using UCI Heart Disease Dataset ❤️")
+
 
 
