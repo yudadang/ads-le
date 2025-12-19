@@ -1,200 +1,152 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib
-import shap
+import seaborn as sns
 import matplotlib.pyplot as plt
 
-# --------------------------------------------------
-# CONFIG
-# --------------------------------------------------
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, roc_auc_score
+
+# -----------------------------
+# APP CONFIG
+# -----------------------------
 st.set_page_config(
-    page_title="Cardiovascular Disease Risk Dashboard",
-    layout="wide"
+    page_title="Heart Disease Risk Prediction",
+    layout="wide",
+    initial_sidebar_state="collapsed"  # 🔒 UI locked
 )
 
-st.title("❤️ Cardiovascular Disease Risk Analysis & Prediction")
+st.title("❤️ Heart Disease Risk Prediction Dashboard")
+st.caption("Applied Data Science – Full End-to-End Deployment")
 
-# --------------------------------------------------
-# LOAD MODEL
-# --------------------------------------------------
-model = joblib.load("model.pkl")
+# -----------------------------
+# LOAD & PREPARE DATA (LOCKED)
+# -----------------------------
+@st.cache_data
+def load_data():
+    df = pd.read_csv("data/heart_disease_kaggle.csv")
+    df["target"] = (df["target"] > 0).astype(int)
+    return df
 
-# --------------------------------------------------
-# SIDEBAR NAVIGATION
-# --------------------------------------------------
-page = st.sidebar.radio(
-    "Navigation",
-    ["📊 Dashboard", "🩺 Risk Prediction", "📖 Project Narrative"]
-)
+df = load_data()
 
-# --------------------------------------------------
-# DASHBOARD PAGE
-# --------------------------------------------------
-if page == "📊 Dashboard":
+FEATURES = [
+    "age", "trestbps", "chol", "thalach",
+    "oldpeak", "sex", "cp", "fbs",
+    "restecg", "exang", "slope", "ca", "thal"
+]
 
-    st.header("📊 Dataset Overview (Kaggle Cardiovascular Dataset)")
+X = df[FEATURES]
+y = df["target"]
 
-    st.markdown(
-        """
-        **Dataset Source:** Kaggle Cardiovascular Disease Dataset  
-        **Size:** ~70,000 patients  
-        **Goal:** Identify risk factors associated with cardiovascular disease
-        """
+# -----------------------------
+# TRAIN MODEL (ON LOAD)
+# -----------------------------
+@st.cache_resource
+def train_model(X, y):
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_scaled, y, test_size=0.2, stratify=y, random_state=42
     )
 
-    st.subheader("🔢 Key Performance Indicators")
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    col1.metric("Dataset Size", "70,000+")
-    col2.metric("Target Variable", "Cardio (0 / 1)")
-    col3.metric("Model Type", "Random Forest")
-    col4.metric("Class Handling", "Balanced Weights")
-
-    st.divider()
-
-    st.subheader("📌 Risk Factors Used in the Model")
-    st.write(
-        """
-        - Age (years)
-        - Gender
-        - Systolic & Diastolic Blood Pressure
-        - Cholesterol & Glucose Levels
-        - BMI
-        - Smoking, Alcohol Intake, Physical Activity
-        """
+    model = RandomForestClassifier(
+        n_estimators=300,
+        max_depth=8,
+        random_state=42,
+        class_weight="balanced"
     )
 
-# --------------------------------------------------
-# PREDICTION PAGE
-# --------------------------------------------------
-elif page == "🩺 Risk Prediction":
+    model.fit(X_train, y_train)
 
-    st.header("🩺 Individual Cardiovascular Risk Prediction")
+    metrics = {
+        "accuracy": accuracy_score(y_test, model.predict(X_test)),
+        "roc_auc": roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
+    }
 
-    st.write("Enter patient health information below:")
+    return model, scaler, metrics
 
-    col1, col2, col3 = st.columns(3)
+model, scaler, metrics = train_model(X, y)
+
+# -----------------------------
+# KPI SECTION (LOCKED)
+# -----------------------------
+st.subheader("📊 Model Performance (Locked)")
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Dataset Size", f"{len(df):,}")
+col2.metric("Accuracy", f"{metrics['accuracy']:.2f}")
+col3.metric("ROC AUC", f"{metrics['roc_auc']:.2f}")
+
+# -----------------------------
+# EDA VISUALS (READ-ONLY)
+# -----------------------------
+st.subheader("📈 Dataset Insights")
+
+fig, ax = plt.subplots()
+sns.countplot(x=df["target"], ax=ax)
+ax.set_xticklabels(["No Disease", "Disease"])
+st.pyplot(fig)
+
+fig, ax = plt.subplots()
+sns.histplot(df["age"], kde=True, ax=ax)
+st.pyplot(fig)
+
+# -----------------------------
+# PREDICTION SECTION
+# -----------------------------
+st.subheader("🩺 Patient Risk Prediction")
+
+with st.form("prediction_form"):
+    col1, col2 = st.columns(2)
 
     with col1:
-        age = st.slider("Age (years)", 30, 80, 55)
-        gender = st.selectbox("Gender", ["Female", "Male"])
-        gender = 1 if gender == "Male" else 0
+        age = st.slider("Age", 20, 100, 55)
+        trestbps = st.slider("Resting Blood Pressure", 80, 200, 130)
+        chol = st.slider("Cholesterol", 100, 600, 250)
+        thalach = st.slider("Max Heart Rate", 70, 220, 150)
+        oldpeak = st.slider("ST Depression", 0.0, 6.0, 1.5)
 
     with col2:
-        ap_hi = st.slider("Systolic BP", 90, 200, 130)
-        ap_lo = st.slider("Diastolic BP", 60, 120, 85)
+        sex = st.selectbox("Sex", [0, 1])
+        cp = st.selectbox("Chest Pain Type", [0, 1, 2, 3])
+        fbs = st.selectbox("Fasting Blood Sugar > 120", [0, 1])
+        restecg = st.selectbox("Rest ECG", [0, 1, 2])
+        exang = st.selectbox("Exercise-Induced Angina", [0, 1])
+        slope = st.selectbox("Slope", [0, 1, 2])
+        ca = st.selectbox("Major Vessels", [0, 1, 2, 3])
+        thal = st.selectbox("Thal", [0, 1, 2])
 
-    with col3:
-        cholesterol = st.selectbox("Cholesterol Level", [1, 2, 3])
-        gluc = st.selectbox("Glucose Level", [1, 2, 3])
+    submitted = st.form_submit_button("Predict Risk")
 
-    col4, col5, col6 = st.columns(3)
+if submitted:
+    input_df = pd.DataFrame([[ 
+        age, trestbps, chol, thalach, oldpeak,
+        sex, cp, fbs, restecg, exang, slope, ca, thal
+    ]], columns=FEATURES)
 
-    with col4:
-        height = st.slider("Height (cm)", 140, 200, 170)
-        weight = st.slider("Weight (kg)", 40, 150, 75)
+    input_scaled = scaler.transform(input_df)
+    risk = model.predict_proba(input_scaled)[0][1]
 
-    with col5:
-        smoke = st.selectbox("Smoker", [0, 1])
-        alco = st.selectbox("Alcohol Intake", [0, 1])
+    st.subheader("🔬 Prediction Result")
+    st.progress(int(risk * 100))
+    st.write(f"**Estimated Heart Disease Risk: {risk*100:.2f}%**")
 
-    with col6:
-        active = st.selectbox("Physically Active", [0, 1])
+    if risk > 0.6:
+        st.error("⚠️ High risk detected. Medical evaluation recommended.")
+    elif risk > 0.3:
+        st.warning("🟠 Moderate risk. Lifestyle changes advised.")
+    else:
+        st.success("✅ Low risk detected.")
 
-    # Feature Engineering (must match training)
-    bmi = weight / ((height / 100) ** 2)
-
-    input_df = pd.DataFrame([{
-        "gender": gender,
-        "ap_hi": ap_hi,
-        "ap_lo": ap_lo,
-        "cholesterol": cholesterol,
-        "gluc": gluc,
-        "smoke": smoke,
-        "alco": alco,
-        "active": active,
-        "age_years": age,
-        "bmi": bmi
-    }])
-
-    if st.button("🔍 Predict Risk"):
-
-        probability = model.predict_proba(input_df)[0][1]
-        prediction = model.predict(input_df)[0]
-
-        st.subheader("📈 Prediction Result")
-
-        st.progress(int(probability * 100))
-        st.write(f"**Estimated Risk Probability:** `{probability*100:.2f}%`")
-
-        if prediction == 1:
-            st.error("⚠️ High Risk of Cardiovascular Disease")
-        else:
-            st.success("✅ Low Risk of Cardiovascular Disease")
-
-        # ---------------- SHAP EXPLANATION ----------------
-        st.subheader("🧠 Risk Explanation (SHAP)")
-
-        explainer = shap.TreeExplainer(model.named_steps["rf"])
-        processed_input = model.named_steps["preprocess"].transform(input_df)
-        shap_values = explainer.shap_values(processed_input)
-
-        fig, ax = plt.subplots()
-        shap.waterfall_plot(
-            shap.Explanation(
-                values=shap_values[1][0],
-                base_values=explainer.expected_value[1],
-                feature_names=input_df.columns
-            ),
-            show=False
-        )
-        st.pyplot(fig)
-
-# --------------------------------------------------
-# PROJECT NARRATIVE PAGE
-# --------------------------------------------------
-elif page == "📖 Project Narrative":
-
-    st.header("📖 Project Narrative")
-
-    st.markdown(
-        """
-        ### Problem Definition
-        Cardiovascular disease remains one of the leading causes of death worldwide.
-        This project aims to predict cardiovascular disease risk using patient health indicators.
-
-        ### Data Collection
-        The Kaggle Cardiovascular Disease Dataset was used, containing approximately
-        70,000 patient records with demographic, lifestyle, and clinical attributes.
-
-        ### Data Preprocessing
-        - Converted age from days to years
-        - Engineered BMI from height and weight
-        - Encoded categorical variables
-        - Standardized numerical features
-
-        ### Modeling
-        A Random Forest classifier with class-balanced weights was trained to handle
-        class imbalance while maintaining model stability.
-
-        ### Evaluation
-        Model performance was assessed using:
-        - ROC-AUC
-        - Precision
-        - Recall
-        - F1-score
-
-        ### Insights & Recommendations
-        - Blood pressure, age, BMI, and cholesterol are strong predictors
-        - Lifestyle factors (smoking, physical inactivity) significantly increase risk
-        - The model can assist in early screening and preventive healthcare planning
-        """
-    )
-
-# --------------------------------------------------
-# FOOTER
-# --------------------------------------------------
-st.divider()
-st.caption("Applied Data Science | Cardiovascular Risk Prediction | Streamlit App")
+# -----------------------------
+# FOOTER (LOCKED)
+# -----------------------------
+st.write("---")
+st.caption(
+    "This application demonstrates the full Applied Data Science lifecycle: "
+    "problem definition, data processing, modeling, evaluation, and deployment."
+)
