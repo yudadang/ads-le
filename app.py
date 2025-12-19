@@ -25,25 +25,19 @@ st.caption("An Applied Data Science Dashboard for Heart Disease Risk Prediction"
 # -------------------------------------------------
 @st.cache_data
 def load_data():
-    df = pd.read_csv("cardio_train.csv")
+    df = pd.read_csv("cardio_train.csv", sep=";")  # <-- IMPORTANT FIX
 
-    # Age handling (already in years in Kaggle cardio dataset)
-    if "age" not in df.columns:
-        st.error("❌ Age column not found.")
-        st.stop()
+    # Convert age from days to years
+    df["age"] = (df["age"] / 365.25).astype(int)
 
-    # Target column
-    if "cardio" not in df.columns:
-        st.error("❌ Target column not found.")
-        st.stop()
-
-    # Rename for clarity
+    # Rename target
     df = df.rename(columns={"cardio": "target"})
 
-    # Gender mapping
+    # Gender mapping (1 = Female, 2 = Male)
     df["gender_label"] = df["gender"].map({1: "Female", 2: "Male"})
 
     return df
+
 
 
 df = load_data()
@@ -225,3 +219,4 @@ else:
 # -------------------------------------------------
 st.write("---")
 st.caption("PulseGuard • Applied Data Science Learning Evidence • 2025")
+
