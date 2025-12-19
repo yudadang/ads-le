@@ -1,149 +1,171 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, roc_auc_score, classification_report
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-# -----------------------------
-# App Configuration
-# -----------------------------
+# -------------------------------------------------
+# App Config
+# -------------------------------------------------
 st.set_page_config(
-    page_title="PulseGuard",
+    page_title="PulseGuard – Heart Disease Risk Dashboard",
     layout="wide"
 )
 
-st.title("🫀 PulseGuard: Cardiovascular Risk Intelligence")
-st.caption("Applied Data Science Learning Evidence – Health Analytics")
+st.title("❤️ PulseGuard")
+st.caption("An Applied Data Science Dashboard for Heart Disease Risk Prediction")
 
-# -----------------------------
+# -------------------------------------------------
 # Load & Prepare Data
-# -----------------------------
+# -------------------------------------------------
 @st.cache_data
 def load_data():
     df = pd.read_csv("cardio_train.csv")
 
-    # Age handling (dataset stores days)
-    if "age" in df.columns:
-        df["age_years"] = (df["age"] / 365).astype(int)
-    elif "age_days" in df.columns:
-        df["age_years"] = (df["age_days"] / 365).astype(int)
-    else:
-        st.error("Age column not found.")
+    # Age handling (already in years in Kaggle cardio dataset)
+    if "age" not in df.columns:
+        st.error("❌ Age column not found.")
         st.stop()
 
-    # Target
-    df.rename(columns={"cardio": "target"}, inplace=True)
+    # Target column
+    if "cardio" not in df.columns:
+        st.error("❌ Target column not found.")
+        st.stop()
+
+    # Rename for clarity
+    df = df.rename(columns={"cardio": "target"})
+
+    # Gender mapping
+    df["gender_label"] = df["gender"].map({1: "Female", 2: "Male"})
 
     return df
 
+
 df = load_data()
 
-# -----------------------------
-# Feature Selection
-# -----------------------------
-FEATURES = [
-    "age_years", "gender", "ap_hi", "ap_lo",
-    "cholesterol", "gluc", "smoke", "alco", "active"
-]
-
-X = df[FEATURES]
-y = df["target"]
-
-# -----------------------------
-# Train Model (on load)
-# -----------------------------
-@st.cache_resource
-def train_model():
-    pipeline = Pipeline([
-        ("scaler", StandardScaler()),
-        ("rf", RandomForestClassifier(
-            n_estimators=200,
-            max_depth=10,
-            random_state=42
-        ))
-    ])
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
-    )
-    pipeline.fit(X_train, y_train)
-
-    metrics = {
-        "accuracy": accuracy_score(y_test, pipeline.predict(X_test)),
-        "precision": precision_score(y_test, pipeline.predict(X_test)),
-        "recall": recall_score(y_test, pipeline.predict(X_test)),
-        "f1": f1_score(y_test, pipeline.predict(X_test)),
-        "roc_auc": roc_auc_score(y_test, pipeline.predict_proba(X_test)[:, 1])
-    }
-
-    return pipeline, metrics
-
-model, metrics = train_model()
-
-# -----------------------------
+# -------------------------------------------------
 # Sidebar Navigation
-# -----------------------------
-page = st.sidebar.selectbox(
+# -------------------------------------------------
+page = st.sidebar.radio(
     "Navigation",
     ["📊 Dashboard", "🩺 Prediction", "ℹ️ Feature Guide"]
 )
 
-# ============================================================
+# -------------------------------------------------
 # 📊 DASHBOARD
-# ============================================================
+# -------------------------------------------------
 if page == "📊 Dashboard":
 
     st.header("📊 Dataset Overview")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Patients", len(df))
-    c2.metric("Avg Age", int(df["age_years"].mean()))
-    c3.metric("Heart Disease %", f"{df['target'].mean()*100:.1f}%")
-    c4.metric("Model ROC-AUC", f"{metrics['roc_auc']:.2f}")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Patients", len(df))
+    col2.metric("Average Age", int(df["age"].mean()))
+    col3.metric(
+        "Heart Disease Rate",
+        f"{round(df['target'].mean()*100, 1)}%"
+    )
 
-    st.subheader("📈 Age Distribution")
+    st.subheader("🔍 Data Preview")
+    st.dataframe(df.head())
+
+    st.subheader("❤️ Heart Disease Distribution")
     fig, ax = plt.subplots()
-    ax.hist(df["age_years"], bins=30)
+    sns.countplot(x=df["target"], ax=ax)
+    ax.set_xticklabels(["No Disease", "Disease"])
     st.pyplot(fig)
 
-    st.subheader("❤️ Disease Distribution")
+    st.subheader("📌 Age Distribution")
     fig, ax = plt.subplots()
-    df["target"].value_counts().plot(kind="bar", ax=ax)
-    ax.set_xticklabels(["No Disease", "Disease"], rotation=0)
+    sns.histplot(df["age"], kde=True, ax=ax)
     st.pyplot(fig)
 
-    st.subheader("📌 Model Performance")
-    st.json(metrics)
+    st.subheader("📉 Correlation Heatmap")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.heatmap(df.select_dtypes("number").corr(), cmap="coolwarm", ax=ax)
+    st.pyplot(fig)
 
-# ============================================================
+# -------------------------------------------------
 # 🩺 PREDICTION
-# ============================================================
+# -------------------------------------------------
 elif page == "🩺 Prediction":
 
-    st.header("🩺 Individual Risk Assessment")
+    st.header("🩺 Heart Disease Risk Prediction")
 
-    age = st.slider("Age (years)", 20, 80, 50)
+    # -----------------------------
+    # Model Training (ON LOAD)
+    # -----------------------------
+    features = [
+        "age", "gender", "height", "weight",
+        "ap_hi", "ap_lo", "cholesterol",
+        "gluc", "smoke", "alco", "active"
+    ]
+
+    X = df[features]
+    y = df["target"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+
+    model = Pipeline([
+        ("scaler", StandardScaler()),
+        ("rf", RandomForestClassifier(
+            n_estimators=200,
+            max_depth=8,
+            random_state=42
+        ))
+    ])
+
+    model.fit(X_train, y_train)
+
+    # -----------------------------
+    # User Inputs
+    # -----------------------------
+    st.subheader("👤 Patient Information")
+
+    age = st.slider("Age", 18, 100, 50)
 
     gender_label = st.selectbox("Gender", ["Female", "Male"])
     gender = 1 if gender_label == "Female" else 2
 
+    height = st.slider("Height (cm)", 140, 210, 170)
+    weight = st.slider("Weight (kg)", 40, 150, 70)
+
     ap_hi = st.slider("Systolic BP", 90, 200, 120)
-    ap_lo = st.slider("Diastolic BP", 60, 120, 80)
+    ap_lo = st.slider("Diastolic BP", 60, 140, 80)
 
-    cholesterol = st.selectbox("Cholesterol Level", [1, 2, 3])
-    gluc = st.selectbox("Glucose Level", [1, 2, 3])
+    cholesterol = st.selectbox(
+        "Cholesterol Level",
+        [1, 2, 3],
+        format_func=lambda x: ["Normal", "Above Normal", "High"][x-1]
+    )
 
-    smoke = st.selectbox("Smoker", [0, 1])
-    alco = st.selectbox("Alcohol Intake", [0, 1])
-    active = st.selectbox("Physically Active", [0, 1])
+    gluc = st.selectbox(
+        "Glucose Level",
+        [1, 2, 3],
+        format_func=lambda x: ["Normal", "Above Normal", "High"][x-1]
+    )
 
+    smoke = st.selectbox("Smoker?", [0, 1], format_func=lambda x: ["No", "Yes"][x])
+    alco = st.selectbox("Alcohol Intake?", [0, 1], format_func=lambda x: ["No", "Yes"][x])
+    active = st.selectbox("Physically Active?", [0, 1], format_func=lambda x: ["No", "Yes"][x])
+
+    # -----------------------------
+    # Prediction
+    # -----------------------------
     if st.button("Predict Risk"):
+
         input_df = pd.DataFrame([{
-            "age_years": age,
+            "age": age,
             "gender": gender,
+            "height": height,
+            "weight": weight,
             "ap_hi": ap_hi,
             "ap_lo": ap_lo,
             "cholesterol": cholesterol,
@@ -153,46 +175,53 @@ elif page == "🩺 Prediction":
             "active": active
         }])
 
-        prob = model.predict_proba(input_df)[0][1]
-        pred = model.predict(input_df)[0]
+        probability = model.predict_proba(input_df)[0][1]
+        prediction = model.predict(input_df)[0]
 
-        st.subheader("🔬 Prediction Result")
-        st.progress(int(prob * 100))
-        st.write(f"**Estimated Risk: {prob*100:.2f}%**")
+        st.subheader("🔬 Result")
+        st.write(f"**Estimated Heart Disease Risk: {probability*100:.2f}%**")
+        st.progress(int(probability * 100))
 
-        if pred == 1:
-            st.error("⚠️ HIGH RISK — Cardiovascular disease likely.")
+        if prediction == 1:
+            st.error("⚠️ HIGH RISK — Medical consultation advised.")
         else:
-            st.success("✅ LOW RISK — No cardiovascular disease detected.")
+            st.success("✅ LOW RISK — Maintain healthy lifestyle.")
 
-# ============================================================
+        # -----------------------------
+        # Model Metrics
+        # -----------------------------
+        st.subheader("📈 Model Performance")
+        y_pred = model.predict(X_test)
+
+        col1, col2 = st.columns(2)
+        col1.metric("Accuracy", round(accuracy_score(y_test, y_pred), 3))
+        col2.metric("ROC AUC", round(roc_auc_score(y_test, model.predict_proba(X_test)[:,1]), 3))
+
+        with st.expander("Classification Report"):
+            st.text(classification_report(y_test, y_pred))
+
+# -------------------------------------------------
 # ℹ️ FEATURE GUIDE
-# ============================================================
+# -------------------------------------------------
 else:
 
-    st.header("ℹ️ Feature Guide & Interpretation")
+    st.header("ℹ️ Feature Explanation Guide")
 
     st.markdown("""
-    **PulseGuard** estimates cardiovascular risk using clinical indicators
-    derived from real patient data.
+    **PulseGuard** uses medical indicators commonly associated with cardiovascular risk:
 
-    ### Feature Explanations
     • **Age** – Risk increases with age  
-    • **Gender** – Female (1), Male (2)  
-    • **Blood Pressure** – Key hypertension indicator  
-    • **Cholesterol & Glucose** – Metabolic risk factors  
-    • **Lifestyle (Smoking, Alcohol, Activity)** – Behavioral risk modifiers  
+    • **Blood Pressure (ap_hi / ap_lo)** – Hypertension indicator  
+    • **Cholesterol & Glucose** – Metabolic risk markers  
+    • **Smoking & Alcohol** – Lifestyle risk factors  
+    • **Physical Activity** – Protective factor  
 
-    ### Model Explanation
-    A Random Forest model was trained on thousands of records to capture
-    nonlinear relationships between health indicators.
-
-    ### Recommendation
-    This tool is **educational** and should not replace professional diagnosis.
+    ⚠️ This tool is **not a medical diagnosis**.  
+    It is a **data-driven risk estimation** for educational purposes.
     """)
 
-# -----------------------------
+# -------------------------------------------------
 # Footer
-# -----------------------------
+# -------------------------------------------------
 st.write("---")
-st.caption("PulseGuard • Applied Data Science • 2025")
+st.caption("PulseGuard • Applied Data Science Learning Evidence • 2025")
