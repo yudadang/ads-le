@@ -1,276 +1,200 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import joblib
+import shap
 import matplotlib.pyplot as plt
 
-# Try seaborn
-try:
-    import seaborn as sns
-except:
-    sns = None
-    st.warning("⚠️ Seaborn is not installed. Some visualizations may be limited.")
-
-# Interactive charts fallback
-try:
-    import plotly.express as px
-except:
-    px = None
-
-
-# =======================================
-# PAGE CONFIG
-# =======================================
+# --------------------------------------------------
+# CONFIG
+# --------------------------------------------------
 st.set_page_config(
-    page_title="Heart Disease Dashboard",
-    page_icon="❤️",
+    page_title="Cardiovascular Disease Risk Dashboard",
     layout="wide"
 )
 
-st.title("❤️ Heart Disease Analysis & Prediction App")
+st.title("❤️ Cardiovascular Disease Risk Analysis & Prediction")
 
-# =======================================
-# LOAD MODEL + PREPROCESSOR + DATA
-# =======================================
-preprocessor = joblib.load("preprocessor.pkl")
+# --------------------------------------------------
+# LOAD MODEL
+# --------------------------------------------------
 model = joblib.load("model.pkl")
-df = pd.read_csv("heart_disease_uci.csv")  # CSV must be in your repo
 
-
-# =======================================
+# --------------------------------------------------
 # SIDEBAR NAVIGATION
-# =======================================
-st.sidebar.title("📌 Navigation")
-page = st.sidebar.radio("", ["📊 Dashboard", "📈 Model Metrics", "🩺 Prediction"])
+# --------------------------------------------------
+page = st.sidebar.radio(
+    "Navigation",
+    ["📊 Dashboard", "🩺 Risk Prediction", "📖 Project Narrative"]
+)
 
-st.sidebar.write("---")
-st.sidebar.info("Built for Applied Data Science 🧠")
-st.sidebar.write("GitHub: yudadang/ADS-LE")
-
-
-# =======================================
-# 📊 DASHBOARD PAGE
-# =======================================
+# --------------------------------------------------
+# DASHBOARD PAGE
+# --------------------------------------------------
 if page == "📊 Dashboard":
 
-    st.header("📈 Heart Disease Dataset Overview")
+    st.header("📊 Dataset Overview (Kaggle Cardiovascular Dataset)")
 
-    # =========================
-    # KPI Summary
-    # =========================
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Patients", len(df))
-    col2.metric("Average Age", round(df["age"].mean(), 1))
-    col3.metric("Heart Disease (%)", f"{round((df['num']>0).mean()*100, 1)}%")
-
-    st.write("---")
-
-    # =========================
-    # Dataset Preview
-    # =========================
-    with st.expander("📌 View Dataset"):
-        st.dataframe(df.head())
-
-    # =========================
-    # Target Distribution
-    # =========================
-    st.markdown("### ❤️ Heart Disease Distribution")
-
-    if px:
-        fig = px.histogram(df, x=(df["num"] > 0),
-                           color=(df["num"] > 0),
-                           labels={'x': 'Disease Presence'},
-                           color_discrete_sequence=["green", "red"])
-        fig.update_layout(xaxis_ticktext=["No Disease", "Disease"],
-                          xaxis_tickvals=[0, 1])
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        fig, ax = plt.subplots()
-        sns.countplot(data=df, x=(df["num"] > 0), ax=ax)
-        ax.set_xticklabels(["No Disease", "Disease"])
-        st.pyplot(fig)
-
-    st.write("---")
-
-    # =========================
-    # Age Distribution
-    # =========================
-    st.markdown("### 👥 Age Distribution")
-
-    if px:
-        fig = px.histogram(df, x="age", nbins=30, marginal="box",
-                           color_discrete_sequence=["blue"])
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        fig, ax = plt.subplots()
-        sns.histplot(df["age"], kde=True, ax=ax)
-        st.pyplot(fig)
-
-    st.write("---")
-
-    # =========================
-    # Correlation Heatmap
-    # =========================
-    st.markdown("### 🔥 Correlation Heatmap")
-    numeric_df = df.select_dtypes(include=['int64', 'float64'])
-
-    if px:
-        fig = px.imshow(numeric_df.corr(), color_continuous_scale="RdBu_r")
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        fig, ax = plt.subplots(figsize=(10, 6))
-        sns.heatmap(numeric_df.corr(), cmap="coolwarm", ax=ax)
-        st.pyplot(fig)
-
-    st.write("---")
-
-    # =========================
-    # Feature Importances
-    # =========================
-    st.subheader("✨ Feature Importances (Model)")
-
-    rf = model.named_steps["rf"]
-    pre = model.named_steps["preprocess"]
-
-    ohe = pre.named_transformers_["cat"]["encoder"]
-    ohe_cols = list(ohe.get_feature_names_out(
-        ["sex", "cp", "restecg", "slope", "thal", "ca", "fbs", "exang"]
-    ))
-
-    all_features = ["age", "trestbps", "chol", "thalch", "oldpeak"] + ohe_cols
-    importances = rf.feature_importances_
-
-    importance_df = pd.DataFrame({
-        "Feature": all_features,
-        "Importance": importances
-    }).sort_values("Importance", ascending=False)
-
-    st.dataframe(importance_df)
-
-    if px:
-        fig = px.bar(importance_df.head(10),
-                     x="Importance", y="Feature",
-                     orientation="h",
-                     color="Importance",
-                     color_continuous_scale="Inferno")
-        st.plotly_chart(fig, use_container_width=True)
-
-# =======================================
-# 📈 MODEL METRICS PAGE
-# =======================================
-elif page == "📈 Model Metrics":
-
-    st.title("📈 Model Performance Metrics")
-
-    # Clean dataset EXACTLY like training
-    df_metrics = df.copy()
-    df_metrics["target"] = (df_metrics["num"] > 0).astype(int)
-
-    X = df_metrics[[
-        "age", "sex", "cp", "trestbps", "chol",
-        "fbs", "restecg", "thalch", "exang", "oldpeak",
-        "slope", "ca", "thal"
-    ]]
-
-    y = df_metrics["target"]
-
-    # ❗ NO PREPROCESSOR HERE - model already contains it
-    y_pred = model.predict(X)
-    y_proba = model.predict_proba(X)[:, 1]
-
-    # Metrics Display
-    from sklearn.metrics import (
-        accuracy_score, precision_score, recall_score,
-        f1_score, roc_auc_score
+    st.markdown(
+        """
+        **Dataset Source:** Kaggle Cardiovascular Disease Dataset  
+        **Size:** ~70,000 patients  
+        **Goal:** Identify risk factors associated with cardiovascular disease
+        """
     )
 
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Accuracy", round(accuracy_score(y, y_pred), 3))
-    col2.metric("Precision", round(precision_score(y, y_pred), 3))
-    col3.metric("Recall", round(recall_score(y, y_pred), 3))
-    col4.metric("F1 Score", round(f1_score(y, y_pred), 3))
-    col5.metric("ROC AUC", round(roc_auc_score(y, y_proba), 3))
+    st.subheader("🔢 Key Performance Indicators")
 
-    st.write("---")
+    col1, col2, col3, col4 = st.columns(4)
 
-    # ROC Curve
-    try:
-        from sklearn.metrics import RocCurveDisplay
-        fig, ax = plt.subplots()
-        RocCurveDisplay.from_predictions(y, y_proba, ax=ax)
-        st.pyplot(fig)
-    except:
-        st.info("⚠️ ROC Curve could not be displayed.")
+    col1.metric("Dataset Size", "70,000+")
+    col2.metric("Target Variable", "Cardio (0 / 1)")
+    col3.metric("Model Type", "Random Forest")
+    col4.metric("Class Handling", "Balanced Weights")
 
-# ============================================================
-# 🩺 PREDICTION PAGE
-# ============================================================
-elif page == "🩺 Prediction":
+    st.divider()
 
-    st.header("🩺 Heart Disease Prediction")
+    st.subheader("📌 Risk Factors Used in the Model")
+    st.write(
+        """
+        - Age (years)
+        - Gender
+        - Systolic & Diastolic Blood Pressure
+        - Cholesterol & Glucose Levels
+        - BMI
+        - Smoking, Alcohol Intake, Physical Activity
+        """
+    )
 
-    st.write("Enter patient information to estimate heart disease risk:")
+# --------------------------------------------------
+# PREDICTION PAGE
+# --------------------------------------------------
+elif page == "🩺 Risk Prediction":
 
-    # ------------ Input Fields -------------
-    age = st.slider("Age", 20, 100, 50)
-    trestbps = st.slider("Resting Blood Pressure", 80, 200, 120)
-    chol = st.slider("Cholesterol", 100, 600, 250)
-    thalch = st.slider("Max Heart Rate", 70, 220, 150)
-    oldpeak = st.slider("ST Depression", 0.0, 6.0, 1.0, step=0.1)
+    st.header("🩺 Individual Cardiovascular Risk Prediction")
 
-    sex = st.selectbox("Sex", ["Male", "Female"])
-    sex = 1 if sex == "Male" else 0
+    st.write("Enter patient health information below:")
 
-    cp_map = {"typical angina":0, "atypical angina":1, "non-anginal":2, "asymptomatic":3}
-    cp = cp_map[st.selectbox("Chest Pain Type", list(cp_map.keys()))]
+    col1, col2, col3 = st.columns(3)
 
-    restecg_map = {"normal":0, "st-t abnormality":1, "lv hypertrophy":2}
-    restecg = restecg_map[st.selectbox("Resting ECG", list(restecg_map.keys()))]
+    with col1:
+        age = st.slider("Age (years)", 30, 80, 55)
+        gender = st.selectbox("Gender", ["Female", "Male"])
+        gender = 1 if gender == "Male" else 0
 
-    slope_map = {"upsloping":0, "flat":1, "downsloping":2}
-    slope = slope_map[st.selectbox("Slope", list(slope_map.keys()))]
+    with col2:
+        ap_hi = st.slider("Systolic BP", 90, 200, 130)
+        ap_lo = st.slider("Diastolic BP", 60, 120, 85)
 
-    thal_map = {"normal":0, "fixed defect":1, "reversable defect":2}
-    thal = thal_map[st.selectbox("Thal", list(thal_map.keys()))]
+    with col3:
+        cholesterol = st.selectbox("Cholesterol Level", [1, 2, 3])
+        gluc = st.selectbox("Glucose Level", [1, 2, 3])
 
-    ca = st.selectbox("Major Vessels (ca)", [0, 1, 2, 3])
-    fbs = st.selectbox("Fasting Blood Sugar > 120", [0, 1])
-    exang = st.selectbox("Exercise-induced Angina", [0, 1])
+    col4, col5, col6 = st.columns(3)
 
-    if st.button("Predict Risk"):
+    with col4:
+        height = st.slider("Height (cm)", 140, 200, 170)
+        weight = st.slider("Weight (kg)", 40, 150, 75)
 
-        input_data = pd.DataFrame([{
-            "age": age,
-            "trestbps": trestbps,
-            "chol": chol,
-            "thalch": thalch,
-            "oldpeak": oldpeak,
-            "sex": sex,
-            "cp": cp,
-            "fbs": fbs,
-            "restecg": restecg,
-            "exang": exang,
-            "slope": slope,
-            "ca": ca,
-            "thal": thal
-        }])
+    with col5:
+        smoke = st.selectbox("Smoker", [0, 1])
+        alco = st.selectbox("Alcohol Intake", [0, 1])
 
-        # 🚫 NO MORE TRANSFORM — model is already a full pipeline
-        probability = model.predict_proba(input_data)[0][1]
-        prediction = model.predict(input_data)[0]
+    with col6:
+        active = st.selectbox("Physically Active", [0, 1])
 
-        st.subheader("🔬 Prediction Result")
-        st.write(f"**Heart Disease Probability: {probability*100:.2f}%**")
+    # Feature Engineering (must match training)
+    bmi = weight / ((height / 100) ** 2)
+
+    input_df = pd.DataFrame([{
+        "gender": gender,
+        "ap_hi": ap_hi,
+        "ap_lo": ap_lo,
+        "cholesterol": cholesterol,
+        "gluc": gluc,
+        "smoke": smoke,
+        "alco": alco,
+        "active": active,
+        "age_years": age,
+        "bmi": bmi
+    }])
+
+    if st.button("🔍 Predict Risk"):
+
+        probability = model.predict_proba(input_df)[0][1]
+        prediction = model.predict(input_df)[0]
+
+        st.subheader("📈 Prediction Result")
+
+        st.progress(int(probability * 100))
+        st.write(f"**Estimated Risk Probability:** `{probability*100:.2f}%`")
 
         if prediction == 1:
-            st.error("⚠️ High risk of heart disease detected!")
+            st.error("⚠️ High Risk of Cardiovascular Disease")
         else:
-            st.success("✅ Low risk of heart disease detected.")
+            st.success("✅ Low Risk of Cardiovascular Disease")
 
+        # ---------------- SHAP EXPLANATION ----------------
+        st.subheader("🧠 Risk Explanation (SHAP)")
 
+        explainer = shap.TreeExplainer(model.named_steps["rf"])
+        processed_input = model.named_steps["preprocess"].transform(input_df)
+        shap_values = explainer.shap_values(processed_input)
 
-# =======================================
-st.write("---")
-st.caption("Machine Learning Dashboard using UCI Heart Disease Dataset ❤️")
+        fig, ax = plt.subplots()
+        shap.waterfall_plot(
+            shap.Explanation(
+                values=shap_values[1][0],
+                base_values=explainer.expected_value[1],
+                feature_names=input_df.columns
+            ),
+            show=False
+        )
+        st.pyplot(fig)
 
+# --------------------------------------------------
+# PROJECT NARRATIVE PAGE
+# --------------------------------------------------
+elif page == "📖 Project Narrative":
 
+    st.header("📖 Project Narrative")
 
+    st.markdown(
+        """
+        ### Problem Definition
+        Cardiovascular disease remains one of the leading causes of death worldwide.
+        This project aims to predict cardiovascular disease risk using patient health indicators.
+
+        ### Data Collection
+        The Kaggle Cardiovascular Disease Dataset was used, containing approximately
+        70,000 patient records with demographic, lifestyle, and clinical attributes.
+
+        ### Data Preprocessing
+        - Converted age from days to years
+        - Engineered BMI from height and weight
+        - Encoded categorical variables
+        - Standardized numerical features
+
+        ### Modeling
+        A Random Forest classifier with class-balanced weights was trained to handle
+        class imbalance while maintaining model stability.
+
+        ### Evaluation
+        Model performance was assessed using:
+        - ROC-AUC
+        - Precision
+        - Recall
+        - F1-score
+
+        ### Insights & Recommendations
+        - Blood pressure, age, BMI, and cholesterol are strong predictors
+        - Lifestyle factors (smoking, physical inactivity) significantly increase risk
+        - The model can assist in early screening and preventive healthcare planning
+        """
+    )
+
+# --------------------------------------------------
+# FOOTER
+# --------------------------------------------------
+st.divider()
+st.caption("Applied Data Science | Cardiovascular Risk Prediction | Streamlit App")
